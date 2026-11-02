@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DJ-24 Mixer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Space+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="unit">
+  <header>
+    <div class="logo">DJ-24<small>SPOTIFY MIXER</small></div>
+    <div id="status" class="status">Press a key or click anywhere to wake the audio engine.</div>
+    <div class="hdr-btns">
+      <button id="btn-keys" class="pill">KEYS ?</button>
+      <button id="btn-demo" class="pill">DEMO LOOPS</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="slot-A"></div>
+    <section class="mixer">
+      <div class="lcd small">
+        <div class="lcd-top"><span class="tag">MASTER</span><span id="mix-state">XFADE 50%</span></div>
+        <canvas id="meters" width="240" height="96"></canvas>
+      </div>
+      <div class="xfwrap"><span>A</span><input type="range" id="xf" min="0" max="1" step="0.001" value="0.5" aria-label="Crossfader"><span>B</span></div>
+      <div class="cutrow">
+        <button class="btn sm" data-cut="0">CUT A<kbd>,</kbd></button>
+        <button class="btn sm" data-cut="0.5">MID<kbd>\</kbd></button>
+        <button class="btn sm" data-cut="1">CUT B<kbd>.</kbd></button>
+      </div>
+      <div class="fxlabel">FX <small>hold key / pad</small></div>
+      <div class="fxpads" id="fxpads"></div>
+      <div class="knobs mixk" id="mixk"></div>
+      <div class="automix">
+        <button class="btn wide" id="btn-auto"><i></i>AUTO-MIX<kbd>ENTER</kbd></button>
+        <label>FADE <select id="auto-secs"><option>4</option><option selected>8</option><option>12</option><option>16</option></select>s</label>
+      </div>
+    </section>
+    <div id="slot-B"></div>
+  </main>
+
+  <section id="library">
+    <nav class="tabs">
+      <button data-tab="spotify" class="on">SPOTIFY</button>
+      <button data-tab="local">LOCAL FILES</button>
+      <button data-tab="queue">QUEUE <b id="qcount">0</b></button>
+    </nav>
+    <div class="tabpane" id="tab-spotify"></div>
+    <div class="tabpane" id="tab-local" hidden></div>
+    <div class="tabpane" id="tab-queue" hidden></div>
+  </section>
+</div>
+
+<div id="help" class="overlay" hidden>
+  <div class="helpbox">
+    <h3>KEYBOARD MAP <button id="help-x" class="pill">CLOSE</button></h3>
+    <div class="helpgrid">
+      <div><h4>Knobs — press key to select, then ↑ / ↓ to turn</h4>
+        <p><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><kbd>5</kbd> Deck A: Gain · Hi · Mid · Low · Filter<br>
+           <kbd>6</kbd><kbd>7</kbd><kbd>8</kbd><kbd>9</kbd><kbd>0</kbd> Deck B: Gain · Hi · Mid · Low · Filter<br>
+           <kbd>T</kbd> Tempo A · <kbd>Y</kbd> Tempo B · <kbd>M</kbd> Master vol · <kbd>V</kbd> FX amount<br>
+           <kbd>Shift</kbd>+↑↓ coarse · <kbd>Alt</kbd>+↑↓ fine · mouse wheel / drag also works · double-click = reset</p></div>
+      <div><h4>Crossfader</h4>
+        <p><kbd>←</kbd><kbd>→</kbd> move (Shift = big step) · <kbd>,</kbd> cut A · <kbd>\</kbd> centre · <kbd>.</kbd> cut B</p></div>
+      <div><h4>Deck A</h4>
+        <p><kbd>Q</kbd> Play/Pause · <kbd>W</kbd> Cue (hold = preview) · <kbd>E</kbd> Sync · <kbd>R</kbd> Loop 4 beats · <kbd>Z</kbd> Brake</p></div>
+      <div><h4>Deck B</h4>
+        <p><kbd>U</kbd> Play/Pause · <kbd>I</kbd> Cue · <kbd>O</kbd> Sync · <kbd>P</kbd> Loop 4 beats · <kbd>X</kbd> Brake</p></div>
+      <div><h4>FX (hold)</h4>
+        <p><kbd>A</kbd> Echo · <kbd>S</kbd> Reverb · <kbd>D</kbd> Flanger · <kbd>F</kbd> Crush · <kbd>G</kbd> Gate</p></div>
+      <div><h4>Other</h4>
+        <p><kbd>Enter</kbd> Auto-mix on/off · <kbd>?</kbd> this panel</p></div>
+    </div>
+    <p class="note">Spotify streams can only be faded (crossfader / gain / master). EQ, filter, FX, loop, brake and sync need Local or Demo tracks — Spotify does not expose its audio to web apps.</p>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script src="audio.js"></script>
+<script src="spotify.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

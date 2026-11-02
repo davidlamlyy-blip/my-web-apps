@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-HK">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#fff8ee">
+<title>Power 日常</title>
+<style>
+:root{--bg:#fff8ee;--card:#fff;--ink:#2b2118;--mute:#8a7b6b;--line:#eadfcf;--accent:#e8772e;--ok:#2e9e5b;--warn:#e0a100;--bad:#d64545;--blue:#3b7ddd}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1713;--card:#272019;--ink:#f3ebe0;--mute:#a39583;--line:#3a3128;--accent:#f08a43}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,"PingFang HK","Noto Sans TC",sans-serif;padding-bottom:84px}
+header{padding:calc(env(safe-area-inset-top) + 16px) 16px 8px;display:flex;gap:12px;align-items:center}
+.avatar{font-size:44px}
+h1{font-size:22px;margin:0}
+.sub{color:var(--mute);font-size:14px}
+main{padding:8px 16px;max-width:680px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}
+.card h2{font-size:16px;margin:0 0 8px}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.pill{font-size:12px;padding:2px 8px;border-radius:99px;color:#fff;white-space:nowrap}
+.bad{background:var(--bad)}.warn{background:var(--warn)}.ok{background:var(--ok)}.mute{background:var(--mute)}.blue{background:var(--blue)}
+.big{font-size:30px;font-weight:700}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{background:var(--bg);border-radius:10px;padding:10px}
+.stat b{display:block;font-size:20px}
+.stat span{font-size:12px;color:var(--mute)}
+button,input,select{font:inherit;color:var(--ink)}
+button{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:8px 14px;cursor:pointer}
+button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+button.sm{padding:4px 10px;font-size:14px}
+input,select{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;width:100%}
+label{display:block;font-size:13px;color:var(--mute);margin:8px 0 2px}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;background:none;color:var(--mute);border-radius:0;padding:10px 0;font-size:12px}
+nav button.on{color:var(--accent);font-weight:700}
+nav button span{display:block;font-size:20px}
+.note{font-size:13px;color:var(--mute)}
+.meal{display:flex;align-items:center;gap:10px;padding:8px 0}
+.meal input{width:24px;height:24px}
+svg{width:100%;height:auto}
+.hide{display:none}
+</style>
+</head>
+<body>
+<header><div class="avatar">🐶</div><div><h1>Power</h1><div class="sub" id="hsub"></div></div></header>
+<main id="main"></main>
+<nav id="nav"></nav>
+
+<script>
+const KEY='power-app-v1';
+const TODAY=()=>{const d=new Date();return fmt(d)};
+const fmt=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const parse=s=>{const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
+const addDays=(s,n)=>{const d=parse(s);d.setDate(d.getDate()+n);return fmt(d)};
+const diffDays=(a,b)=>Math.round((parse(a)-parse(b))/864e5);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// 預設資料。birthday／性別來自 Notion「HOMEBOY - Power」；其餘係一般指引，請同獸醫確認
+const DEFAULT={
+  profile:{name:'Power',birthday:'2026-01-23',sex:'公',neutered:false,adultKg:10,mealsPerDay:2},
+  weights:[
+    {d:'2026-05-22',kg:3.25,bcs:''},{d:'2026-06-22',kg:3.92,bcs:''},
+    {d:'2026-07-22',kg:5.0,bcs:''},{d:'2026-10-06',kg:7.7,bcs:''}
+  ],
+  foods:[
+    {id:'f1',name:'Buddy Bites 幼犬乾糧',role:'dry',kcal100:370,complete:true,note:'kcal 係估算，請對包裝'},
+    {id:'f2',name:'藍莓濕糧',role:'wet',kcal100:90,complete:false,note:'kcal 係估算，請對包裝；Notion 吸引力 3/5'}
+  ],
+  schedule:[
+    {id:'s1',name:'心絲蟲預防',icon:'💊',every:30,last:'',note:'香港有心絲蟲，一般每月'},
+    {id:'s2',name:'牛蜱／跳蚤',icon:'🕷️',every:30,last:'',note:'香港牛蜱可傳血液寄生蟲，一般每月'},
+    {id:'s3',name:'腸道驅蟲',icon:'🪱',every:90,last:'',note:'6 個月後一般每 3 個月；4MO 肚蟲 Report 見 Notion'},
+    {id:'s4',name:'DHPP 疫苗',icon:'💉',every:365,last:'',note:'幼犬針要對針卡；成犬頻率問獸醫'},
+    {id:'s5',name:'瘋狗針',icon:'💉',every:365,last:'',note:'香港 5 個月以上要打、植晶片、領牌'},
+    {id:'s6',name:'磅體重',icon:'⚖️',every:14,last:'',note:'同一部磅、朝早食飯前'},
+    {id:'s7',name:'年度身體檢查',icon:'🩺',every:365,last:'',note:'1 歲（2027-01-23）前後'}
+  ],
+  history:[],   // {d,id,name} 打針／食藥紀錄
+  meals:{}      // {'YYYY-MM-DD':[true,false]}
+};
+let S;
+try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!S){S=structuredClone(DEFAULT);S.schedule.find(x=>x.id==='s6').last='2026-10-06'}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+
+// ---------- 計算 ----------
+function ageInfo(){
+  const b=parse(S.profile.birthday),t=new Date();
+  let m=(t.getFullYear()-b.getFullYear())*12+t.getMonth()-b.getMonth();
+  if(t.getDate()<b.getDate())m--;
+  const days=diffDays(TODAY(),S.profile.birthday);
+  return{months:m,days,text:m<12?`${m} 個月`:`${Math.floor(m/12)} 歲 ${m%12} 個月`};
+}
+const curKg=()=>[...S.weights].sort((a,b)=>a.d.localeCompare(b.d)).at(-1)?.kg||0;
+function energy(){
+  const kg=curKg(),a=ageInfo(),p=S.profile;
+  const rer=70*Math.pow(kg,0.75);
+  let f,label;
+  if(a.months<4){f=3;label='<4 個月幼犬 ×3.0'}
+  else if(a.months<12){
+    // 4 個月至成年：成犬體重 80% 前 ×2.0，之後 ×1.8
+    f=kg/p.adultKg<0.8?2.0:1.8;label=`幼犬／青春期 ×${f.toFixed(1)}`}
+  else{f=p.neutered?1.6:1.8;label=p.neutered?'成犬已絕育 ×1.6':'成犬未絕育 ×1.8'}
+  return{rer,f,label,kcal:rer*f};
+}
+function plan(){
+  const e=energy(),dry=S.foods.find(x=>x.role==='dry'),wet=S.foods.find(x=>x.role==='wet');
+  const wetK=wet?e.kcal*0.1:0,treatK=e.kcal*0.1;
+  const dryK=e.kcal-wetK-treatK+ (wet?0:0);
+  return{e,dry,wet,wetK,treatK,dryK,
+    dryG:dry?dryK/(dry.kcal100/100):0,wetG:wet?wetK/(wet.kcal100/100):0};
+}
+function dueStatus(s){
+  if(!s.last)return{cls:'mute',text:'未記錄',days:null,order:1e6};
+  const next=addDays(s.last,s.every),left=diffDays(next,TODAY());
+  if(left<0)return{cls:'bad',text:`逾期 ${-left} 日`,days:left,order:left,next};
+  if(left<=7)return{cls:'warn',text:left===0?'今日到期':`${left} 日後`,days:left,order:left,next};
+  return{cls:'ok',text:`${left} 日後`,days:left,order:left,next};
+}
+
+// ---------- 畫面 ----------
+let tab='today';
+const TABS=[['today','🏠','今日'],['health','💉','針藥'],['food','🍖','食物'],['weight','⚖️','體重'],['set','⚙️','設定']];
+function render(){
+  const a=ageInfo();
+  document.getElementById('hsub').textContent=`${S.profile.sex}・${a.text}（第 ${a.days} 日）・${curKg()} kg`;
+  document.getElementById('nav').innerHTML=TABS.map(([k,i,t])=>`<button class="${k===tab?'on':''}" data-t="${k}"><span>${i}</span>${t}</button>`).join('');
+  document.getElementById('main').innerHTML=({today:vToday,health:vHealth,food:vFood,weight:vWeight,set:vSet})[tab]();
+  bind();
+}
+function vToday(){
+  const p=plan(),a=ageInfo(),t=TODAY();
+  const items=S.schedule.map(s=>({s,st:dueStatus(s)})).sort((x,y)=>x.st.order-y.st.order);
+  const urgent=items.filter(i=>i.st.cls==='bad'||i.st.cls==='warn'||i.st.cls==='mute');
+  const meals=S.meals[t]||Array(S.profile.mealsPerDay).fill(false);
+  const per=n=>Math.round(n/S.profile.mealsPerDay);
+  let h=`<div class="card"><h2>🔔 要做嘅嘢</h2>${urgent.length?urgent.map(({s,st})=>`<div class="row"><div>${s.icon} <b>${esc(s.name)}</b><div class="note">${esc(s.note)}</div></div><div style="text-align:right"><span class="pill ${st.cls}">${st.text}</span><br><button class="sm" data-done="${s.id}" style="margin-top:4px">今日做咗</button></div></div>`).join(''):'<div class="note">暫時冇緊急項目 🎉</div>'}</div>`;
+  h+=`<div class="card"><h2>🍽️ 今日食咩、食幾多</h2>
+  <div class="grid"><div class="stat"><b>${Math.round(p.e.kcal)} kcal</b><span>每日目標（${p.e.label}）</span></div>
+  <div class="stat"><b>${S.profile.mealsPerDay} 餐</b><span>每餐約 ${Math.round(p.e.kcal/S.profile.mealsPerDay)} kcal</span></div></div>
+  <div style="margin-top:10px">${p.dry?`乾糧 <b>${Math.round(p.dryG)} g／日</b>（每餐 ${per(p.dryG)} g）<span class="note">　${esc(p.dry.name)}</span><br>`:''}
+  ${p.wet?`濕糧 <b>${Math.round(p.wetG)} g／日</b>（≈ ${Math.round(p.wetK)} kcal，10%）<span class="note">　${esc(p.wet.name)}</span><br>`:''}
+  零食上限 <b>${Math.round(p.treatK)} kcal／日</b></div>
+  ${meals.map((m,i)=>`<label class="meal"><input type="checkbox" data-meal="${i}" ${m?'checked':''}> 第 ${i+1} 餐 ${m?'✅ 食咗':''}</label>`).join('')}
+  <div class="note">先行街、後食飯；食完休息約 1 小時先再出街（避免爛屎）。放低 15–20 分鐘唔食就收起。${p.dry?'':'<br>⚠️ 未設定乾糧，去「食物」頁加。'}</div></div>`;
+  h+=`<div class="card"><h2>📌 目前階段</h2><div class="note">${stage(a.months)}</div></div>`;
+  return h;
+}
+function stage(m){
+  if(m<10)return `${m} 個月：青春期，增重快。每 2–4 星期磅一次，評 BCS（摸到肋骨、有腰身，目標 4–5/9）。`;
+  if(m<12)return `${m} 個月：準備轉成犬糧，之後用 7–10 日慢慢轉（先問獸醫）。1 歲要做年度檢查＋補針。`;
+  return `${m} 個月：成犬。每年身體檢查、補針；體重每月睇一次。`;
+}
+function vHealth(){
+  const items=S.schedule.map(s=>({s,st:dueStatus(s)})).sort((x,y)=>x.st.order-y.st.order);
+  let h=`<div class="card"><h2>排程（每項可改週期）</h2>${items.map(({s,st})=>`<div class="row"><div>${s.icon} <b>${esc(s.name)}</b><div class="note">上次：${s.last||'未記錄'}　週期 ${s.every} 日${st.next?`　下次 ${st.next}`:''}</div></div><div style="text-align:right"><span class="pill ${st.cls}">${st.text}</span><br><button class="ghost sm" data-edit="${s.id}" style="margin-top:4px">改</button></div></div>`).join('')}</div>`;
+  h+=`<div class="card"><h2>紀錄（最近）</h2>${S.history.length?[...S.history].reverse().slice(0,15).map(x=>`<div class="row"><div>${esc(x.name)}</div><div class="note">${x.d}</div></div>`).join(''):'<div class="note">未有紀錄。撳「今日做咗」或「改」入日期。</div>'}</div>`;
+  h+=`<div class="note">⚠️ 週期係一般指引（香港常見做法），唔代替獸醫意見；針卡內容請對 Notion「針卡」再填返上次日期。</div>`;
+  return h;
+}
+function vFood(){
+  const p=plan();
+  let h=`<div class="card"><h2>食物清單</h2>${S.foods.map(f=>`<div class="row"><div><b>${esc(f.name)}</b><div class="note">${{dry:'乾糧（主糧）',wet:'濕糧',treat:'零食'}[f.role]}・${f.kcal100} kcal/100g・${f.complete?'完整營養':'補充食品'}${f.note?'・'+esc(f.note):''}</div></div><button class="ghost sm" data-fedit="${f.id}">改</button></div>`).join('')}<button style="margin-top:8px" data-fadd>＋ 加食物</button></div>`;
+  h+=`<div class="card"><h2>點計</h2><div class="note">RER = 70 × 體重^0.75 = ${Math.round(p.e.rer)} kcal；× ${p.e.f.toFixed(1)}（${p.e.label}）= ${Math.round(p.e.kcal)} kcal／日。濕糧佔 10%、零食上限 10%，其餘乾糧。kcal/100g 要對包裝，我預設值係估算，唔確定。</div></div>`;
+  h+=`<div class="card"><h2>食物提醒</h2><div class="note">• 成日唔好轉口味，揀 2–3 隻佢肯食嘅輪流<br>• 避免：朱古力、洋蔥、大蒜、葡萄／提子、夏威夷果、木糖醇、熟骨<br>• 轉糧要 7–10 日逐步轉</div></div>`;
+  return h;
+}
+function vWeight(){
+  const w=[...S.weights].sort((a,b)=>a.d.localeCompare(b.d));
+  let svg='';
+  if(w.length>1){
+    const W=320,H=160,P=28,t0=parse(w[0].d).getTime(),t1=parse(w.at(-1).d).getTime()||1,mx=Math.max(...w.map(x=>x.kg))*1.1;
+    const X=d=>P+(parse(d).getTime()-t0)/((t1-t0)||1)*(W-P*1.5),Y=k=>H-P-(k/mx)*(H-P*1.5);
+    svg=`<svg viewBox="0 0 ${W} ${H}"><polyline fill="none" stroke="var(--accent)" stroke-width="2.5" points="${w.map(x=>X(x.d)+','+Y(x.kg)).join(' ')}"/>${w.map(x=>`<circle cx="${X(x.d)}" cy="${Y(x.kg)}" r="4" fill="var(--accent)"/><text x="${X(x.d)}" y="${Y(x.kg)-8}" font-size="10" text-anchor="middle" fill="var(--ink)">${x.kg}</text>`).join('')}</svg>`;
+  }
+  let rate='';
+  if(w.length>1){const a=w.at(-2),b=w.at(-1),days=diffDays(b.d,a.d);if(days>0)rate=`最近 ${days} 日 +${(b.kg-a.kg).toFixed(2)} kg（約 ${((b.kg-a.kg)/days*30).toFixed(2)} kg／月）`}
+  return `<div class="card"><h2>體重</h2><div class="big">${curKg()} kg</div><div class="note">${rate}</div>${svg}</div>
+  <div class="card"><h2>記錄今日體重</h2><label>體重 (kg)</label><input id="wkg" type="number" step="0.05" inputmode="decimal"><label>日期</label><input id="wd" type="date" value="${TODAY()}"><label>身形 BCS（1–9，目標 4–5，可留空）</label><input id="wb" type="number" min="1" max="9"><br><br><button id="wadd">儲存</button></div>
+  <div class="card"><h2>歷史</h2>${[...w].reverse().map(x=>`<div class="row"><div>${x.d}</div><div><b>${x.kg} kg</b>${x.bcs?` ・BCS ${x.bcs}`:''}</div><button class="ghost sm" data-wdel="${x.d}">刪</button></div>`).join('')}</div>`;
+}
+function vSet(){
+  const p=S.profile;
+  return `<div class="card"><h2>基本資料</h2>
+  <label>名</label><input id="pn" value="${esc(p.name)}">
+  <label>出世日期（Notion：2026-01-23；舊 README 寫 01-22，請核實）</label><input id="pb" type="date" value="${p.birthday}">
+  <label>性別</label><select id="ps"><option ${p.sex==='公'?'selected':''}>公</option><option ${p.sex==='母'?'selected':''}>母</option></select>
+  <label>絕育咗未</label><select id="pz"><option value="0" ${!p.neutered?'selected':''}>未</option><option value="1" ${p.neutered?'selected':''}>已絕育</option></select>
+  <label>預計成犬體重 (kg)（影響幼犬食量，不確定就保持 10）</label><input id="pa" type="number" step="0.5" value="${p.adultKg}">
+  <label>一日幾餐</label><select id="pm"><option ${p.mealsPerDay==2?'selected':''}>2</option><option ${p.mealsPerDay==3?'selected':''}>3</option></select>
+  <br><br><button id="psave">儲存</button></div>
+  <div class="card"><h2>備份</h2><div class="note">資料只存喺呢部機嘅瀏覽器。換機前先匯出。</div><br>
+  <button id="exp">匯出 JSON</button> <button class="ghost" id="imp">匯入 JSON</button><input id="impf" type="file" accept="application/json" class="hide"> <button class="ghost" id="reset" style="color:var(--bad);border-color:var(--bad)">重設</button></div>`;
+}
+
+// ---------- 事件 ----------
+function bind(){
+  document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
+  document.querySelectorAll('[data-done]').forEach(b=>b.onclick=()=>markDone(b.dataset.done,TODAY()));
+  document.querySelectorAll('[data-meal]').forEach(c=>c.onchange=()=>{
+    const t=TODAY(),m=S.meals[t]||Array(S.profile.mealsPerDay).fill(false);m[+c.dataset.meal]=c.checked;S.meals[t]=m;save();render()});
+  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{
+    const s=S.schedule.find(x=>x.id===b.dataset.edit);
+    const d=prompt(`${s.name} 上次日期（YYYY-MM-DD，留空＝清除）`,s.last);if(d===null)return;
+    if(d&&!/^\d{4}-\d{2}-\d{2}$/.test(d))return alert('格式要 YYYY-MM-DD');
+    const e=prompt('週期（日）',s.every);if(e===null)return;
+    s.last=d;s.every=Math.max(1,parseInt(e)||s.every);
+    if(d)S.history.push({d,id:s.id,name:s.name});save();render()});
+  document.querySelectorAll('[data-fedit]').forEach(b=>b.onclick=()=>editFood(S.foods.find(x=>x.id===b.dataset.fedit)));
+  const fa=document.querySelector('[data-fadd]');if(fa)fa.onclick=()=>editFood(null);
+  const wa=document.getElementById('wadd');
+  if(wa)wa.onclick=()=>{
+    const kg=parseFloat(document.getElementById('wkg').value),d=document.getElementById('wd').value;
+    if(!kg||!d)return alert('要填體重同日期');
+    S.weights=S.weights.filter(x=>x.d!==d);S.weights.push({d,kg,bcs:document.getElementById('wb').value});
+    const s6=S.schedule.find(x=>x.id==='s6');if(s6&&(!s6.last||d>s6.last))s6.last=d;
+    save();render()};
+  document.querySelectorAll('[data-wdel]').forEach(b=>b.onclick=()=>{if(confirm('刪除呢條？')){S.weights=S.weights.filter(x=>x.d!==b.dataset.wdel);save();render()}});
+  const ps=document.getElementById('psave');
+  if(ps)ps.onclick=()=>{
+    Object.assign(S.profile,{name:pn.value||'Power',birthday:pb.value,sex:ps_().value,neutered:pz.value==='1',adultKg:parseFloat(pa.value)||10,mealsPerDay:+pm.value});save();render()};
+  const ex=document.getElementById('exp');
+  if(ex){
+    ex.onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));a.download=`power-${TODAY()}.json`;a.click()};
+    impf.onchange=async()=>{try{S=JSON.parse(await impf.files[0].text());save();render()}catch(e){alert('檔案唔啱')}};
+    imp.onclick=()=>impf.click();
+    reset.onclick=()=>{if(confirm('清晒所有紀錄？')){localStorage.removeItem(KEY);location.reload()}};
+  }
+}
+const ps_=()=>document.getElementById('ps');
+function markDone(id,d){
+  const s=S.schedule.find(x=>x.id===id);s.last=d;S.history.push({d,id,name:s.name});save();render();
+}
+function editFood(f){
+  const name=prompt('食物名稱',f?.name||'');if(!name)return;
+  const role=prompt('類別：dry＝乾糧／wet＝濕糧／treat＝零食',f?.role||'dry');if(!['dry','wet','treat'].includes(role))return alert('類別要 dry、wet 或 treat');
+  const k=parseFloat(prompt('kcal／100g（睇包裝 ME 或 kcal/kg ÷10）',f?.kcal100||''));if(!k)return;
+  const complete=confirm('包裝係「完整營養 complete」？（取消＝補充食品）');
+  const o=f||{id:'f'+Date.now()};Object.assign(o,{name,role,kcal100:k,complete,note:f?.note||''});
+  if(!f)S.foods.push(o);
+  // 每類只用第一隻做計算：同類多隻會排序後以最新改動為準
+  save();render();
+}
+render();
+</script>
+</body>
+</html>
