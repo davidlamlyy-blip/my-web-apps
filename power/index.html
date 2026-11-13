@@ -85,6 +85,7 @@ const DEFAULT={
 let S;
 try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 if(!S){S=structuredClone(DEFAULT);S.schedule.find(x=>x.id==='s6').last='2026-10-06'}
+S.calc=Object.assign({bcs:'ideal',act:'normal',treats:0,share:0.8},S.calc||{});   // 食量計數機設定（體態、活動、零食 kcal、乾糧佔比）
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 
 // ---------- 計算 ----------
@@ -96,23 +97,52 @@ function ageInfo(){
   return{months:m,days,text:m<12?`${m} 個月`:`${Math.floor(m/12)} 歲 ${m%12} 個月`};
 }
 const curKg=()=>[...S.weights].sort((a,b)=>a.d.localeCompare(b.d)).at(-1)?.kg||0;
-function energy(){
-  const kg=curKg(),a=ageInfo(),p=S.profile;
-  const rer=70*Math.pow(kg,0.75);
+function energy(o={}){
+  const a=o.adult?{months:99}:ageInfo(),p={...S.profile,...(o.neutered!==undefined?{neutered:o.neutered}:{})},kg=o.kg||curKg();
+  const rer=70*Math.pow(kg,0.75),c={...S.calc,...o};
   let f,label;
   if(a.months<4){f=3;label='<4 個月幼犬 ×3.0'}
   else if(a.months<12){
     // 4 個月至成年：成犬體重 80% 前 ×2.0，之後 ×1.8
     f=kg/p.adultKg<0.8?2.0:1.8;label=`幼犬／青春期 ×${f.toFixed(1)}`}
-  else{f=p.neutered?1.6:1.8;label=p.neutered?'成犬已絕育 ×1.6':'成犬未絕育 ×1.8'}
-  return{rer,f,label,kcal:rer*f};
+  else{f=p.neutered?1.6:1.8;label=p.neutered?'成犬已絕育 ×1.6':'成犬未絕育 ×1.8';
+    if(c.act==='low'){f-=0.2;label+='，低活動 −0.2'}if(c.act==='high'){f+=0.2;label+='，高活動 +0.2'}}
+  if(o.flat){return{rer,f:o.flat,adj:1,label:o.flatLabel||'',kcal:rer*o.flat}}
+  const adj=c.bcs==='thin'?1.1:c.bcs==='heavy'?0.85:1;
+  if(adj!==1)label+=c.bcs==='thin'?'，偏瘦 ×1.1':'，偏重 ×0.85';
+  return{rer,f,adj,label,kcal:rer*f*adj};
 }
 function plan(){
-  const e=energy(),dry=S.foods.find(x=>x.role==='dry'),wet=S.foods.find(x=>x.role==='wet');
-  const wetK=wet?e.kcal*0.1:0,treatK=e.kcal*0.1;
-  const dryK=e.kcal-wetK-treatK+ (wet?0:0);
-  return{e,dry,wet,wetK,treatK,dryK,
-    dryG:dry?dryK/(dry.kcal100/100):0,wetG:wet?wetK/(wet.kcal100/100):0};
+  const e=energy(),c=S.calc,dry=S.foods.find(x=>x.role==='dry'),wet=S.foods.find(x=>x.role==='wet');
+  const tr=Math.max(0,+c.treats||0),budget=Math.max(0,e.kcal-tr),meals=Math.max(1,S.profile.mealsPerDay||2);
+  const dk=dry?dry.kcal100:0,wk=wet?wet.kcal100:0;
+  let share=Math.min(1,Math.max(0,+c.share));if(isNaN(share))share=0.8;
+  if(!(wk>0))share=dk>0?1:0;else if(!(dk>0))share=0;
+  const dryK=budget*share,wetK=budget-dryK;
+  return{e,dry,wet,meals,tr,cap:e.kcal*0.1,budget,share,dk,wk,dryK,wetK,treatK:tr,
+    dryG:dk>0?dryK/(dk/100):0,wetG:wk>0?wetK/(wk/100):0};
+}
+// 情境對比：同一隻狗喺唔同狀況，每日 kcal 同每餐克數會點變（乾濕糧比例、零食、餐數跟現況）
+function scenarioCard(p){
+  const a=ageInfo(),pup=a.months<12,adultKg=S.profile.adultKg||10,kg=curKg();
+  const rows=[['現況（'+p.e.label+'）',p.e.kcal,'']];
+  if(pup){
+    rows.push(['成年後未絕育（'+adultKg+' kg，×1.8）',energy({adult:true,kg:adultKg,neutered:false,bcs:'ideal',act:'normal'}).kcal,'唔係而家食量：1 歲前仲係幼犬公式']);
+    rows.push(['成年後已絕育（'+adultKg+' kg，×1.6）',energy({adult:true,kg:adultKg,neutered:true,bcs:'ideal',act:'normal'}).kcal,'絕育後代謝低，同樣份量好易肥；約少 11%']);
+  }else{
+    rows.push(['已絕育（×1.6）',energy({neutered:true,bcs:'ideal'}).kcal,'絕育後代謝低，同樣份量好易肥']);
+    rows.push(['未絕育（×1.8）',energy({neutered:false,bcs:'ideal'}).kcal,'']);
+    rows.push(['低活動（−0.2）',energy({act:'low',bcs:'ideal'}).kcal,'']);
+    rows.push(['高活動（+0.2）',energy({act:'high',bcs:'ideal'}).kcal,'']);
+  }
+  rows.push(['偏瘦，要增重（×1.1）',energy({bcs:'thin'}).kcal,'每 2 星期磅一次，加到 BCS 4–5/9 就返去理想']);
+  rows.push(['偏重，要減重（×0.85）',energy({bcs:'heavy'}).kcal,'減重要慢（每週約 1–2% 體重），太急會傷身；獸醫跟進']);
+  rows.push(['生病／康復期（RER×1.0）',energy({flat:1.0}).kcal,'只係一般參考：病種唔同差好遠，必須獸醫決定；嘔吐、肚瀉、唔肯食要睇醫生']);
+  const per=k=>{const bud=Math.max(0,k-p.tr),dK=bud*p.share,wK=bud-dK;
+    return (p.dk>0?Math.round(dK/(p.dk/100)/p.meals)+' g':'–')+(p.wk>0?' ／ '+Math.round(wK/(p.wk/100)/p.meals)+' g':'')};
+  return `<div class="card"><h2>🔀 狀況唔同，食量點變</h2><div class="note">用你而家嘅乾濕糧比例（乾 ${Math.round(p.share*100)}%）、零食 ${Math.round(p.tr)} kcal、${p.meals} 餐計。每餐克數＝乾${p.wk>0?' ／ 濕':''}。以 ${kg} kg 計，除非另有註明。</div>
+  ${rows.map(([n,k,nt])=>`<div class="row"><div><b>${n}</b>${nt?`<div class="note">${nt}</div>`:''}</div><div style="text-align:right;white-space:nowrap"><b>${Math.round(k)} kcal</b><div class="note">${per(k)}／餐</div></div></div>`).join('')}
+  <div class="note" style="margin-top:8px">⚠️ 呢啲係一般公式（RER×係數）嘅估算，唔代替獸醫。體重要睇趨勢：2–4 星期體重同 BCS 唔跟預期，先調 10% 左右再睇。</div></div>`;
 }
 function dueStatus(s){
   if(!s.last)return{cls:'mute',text:'未記錄',days:null,order:1e6};
@@ -137,14 +167,14 @@ function vToday(){
   const items=S.schedule.map(s=>({s,st:dueStatus(s)})).sort((x,y)=>x.st.order-y.st.order);
   const urgent=items.filter(i=>i.st.cls==='bad'||i.st.cls==='warn'||i.st.cls==='mute');
   const meals=S.meals[t]||Array(S.profile.mealsPerDay).fill(false);
-  const per=n=>Math.round(n/S.profile.mealsPerDay);
+  const per=n=>Math.round(n/p.meals);
   let h=`<div class="card"><h2>🔔 要做嘅嘢</h2>${urgent.length?urgent.map(({s,st})=>`<div class="row"><div>${s.icon} <b>${esc(s.name)}</b><div class="note">${esc(s.note)}</div></div><div style="text-align:right"><span class="pill ${st.cls}">${st.text}</span><br><button class="sm" data-done="${s.id}" style="margin-top:4px">今日做咗</button></div></div>`).join(''):'<div class="note">暫時冇緊急項目 🎉</div>'}</div>`;
   h+=`<div class="card"><h2>🍽️ 今日食咩、食幾多</h2>
   <div class="grid"><div class="stat"><b>${Math.round(p.e.kcal)} kcal</b><span>每日目標（${p.e.label}）</span></div>
   <div class="stat"><b>${S.profile.mealsPerDay} 餐</b><span>每餐約 ${Math.round(p.e.kcal/S.profile.mealsPerDay)} kcal</span></div></div>
   <div style="margin-top:10px">${p.dry?`乾糧 <b>${Math.round(p.dryG)} g／日</b>（每餐 ${per(p.dryG)} g）<span class="note">　${esc(p.dry.name)}</span><br>`:''}
-  ${p.wet?`濕糧 <b>${Math.round(p.wetG)} g／日</b>（≈ ${Math.round(p.wetK)} kcal，10%）<span class="note">　${esc(p.wet.name)}</span><br>`:''}
-  零食上限 <b>${Math.round(p.treatK)} kcal／日</b></div>
+  ${p.wet?`濕糧 <b>${Math.round(p.wetG)} g／日</b>（每餐 ${per(p.wetG)} g，≈ ${Math.round(p.wetK)} kcal）<span class="note">　${esc(p.wet.name)}</span><br>`:''}
+  零食 <b>${Math.round(p.treatK)} kcal／日</b>（上限 ${Math.round(p.cap)}）<br><span class="note">想調乾濕糧比例：去「食物」頁拉 bar</span></div>
   ${meals.map((m,i)=>`<label class="meal"><input type="checkbox" data-meal="${i}" ${m?'checked':''}> 第 ${i+1} 餐 ${m?'✅ 食咗':''}</label>`).join('')}
   <div class="note">先行街、後食飯；食完休息約 1 小時先再出街（避免爛屎）。放低 15–20 分鐘唔食就收起。${p.dry?'':'<br>⚠️ 未設定乾糧，去「食物」頁加。'}</div></div>`;
   h+=`<div class="card"><h2>📌 目前階段</h2><div class="note">${stage(a.months)}</div></div>`;
@@ -165,7 +195,18 @@ function vHealth(){
 function vFood(){
   const p=plan();
   let h=`<div class="card"><h2>食物清單</h2>${S.foods.map(f=>`<div class="row"><div><b>${esc(f.name)}</b><div class="note">${{dry:'乾糧（主糧）',wet:'濕糧',treat:'零食'}[f.role]}・${f.kcal100} kcal/100g・${f.complete?'完整營養':'補充食品'}${f.note?'・'+esc(f.note):''}</div></div><button class="ghost sm" data-fedit="${f.id}">改</button></div>`).join('')}<button style="margin-top:8px" data-fadd>＋ 加食物</button></div>`;
-  h+=`<div class="card"><h2>點計</h2><div class="note">RER = 70 × 體重^0.75 = ${Math.round(p.e.rer)} kcal；× ${p.e.f.toFixed(1)}（${p.e.label}）= ${Math.round(p.e.kcal)} kcal／日。濕糧佔 10%、零食上限 10%，其餘乾糧。kcal/100g 要對包裝，我預設值係估算，唔確定。</div></div>`;
+  h+=`<div class="card"><h2>🧮 每餐乾濕糧分配</h2>
+  <div class="grid"><div class="stat"><b>${Math.round(p.e.kcal)}</b><span>每日建議 kcal</span></div><div class="stat"><b>${Math.round(p.e.kcal/p.meals)}</b><span>每餐 kcal（${p.meals} 餐）</span></div></div>
+  <label>體態</label><select id="cbcs"><option value="thin">偏瘦（×1.1）</option><option value="ideal">理想</option><option value="heavy">偏重（×0.85）</option></select>
+  <label>活動量（成犬先影響）</label><select id="cact"><option value="low">低（−0.2）</option><option value="normal">普通</option><option value="high">高（+0.2）</option></select>
+  <label>零食 kcal／日（上限 ${Math.round(p.cap)}，即 10%）</label><input id="ctr" type="number" min="0" step="1" value="${S.calc.treats}">
+  ${p.dk>0&&p.wk>0?`<div style="margin-top:12px"><b>乾糧（每餐）</b> <span id="sdt" class="note"></span> <b id="sdg" style="float:right"></b><input type="range" id="sdr" min="0" max="${Math.ceil(p.budget/p.meals/(p.dk/100))}" step="1"></div>
+  <div style="margin-top:8px"><b>濕糧（每餐）</b> <span id="swt" class="note"></span> <b id="swg" style="float:right"></b><input type="range" id="swr" min="0" max="${Math.ceil(p.budget/p.meals/(p.wk/100))}" step="1"></div>
+  <div class="note" style="margin-top:8px">拉其中一條，另一條按 kcal 自動補減，每餐總 kcal 維持喺建議值（已扣零食 ${Math.round(p.tr)} kcal）。</div>`:'<div class="note" style="margin-top:8px">要有乾糧同濕糧兩樣，先可以拉 bar 分配；現時全部由有嘅一種提供。</div>'}
+  <div id="cbt" class="note" style="margin-top:6px"></div>
+  ${p.tr>p.cap?`<div class="pill bad" style="display:inline-block;margin-top:6px">零食超過 10% 上限</div>`:''}</div>`;
+  h+=scenarioCard(p);
+  h+=`<div class="card"><h2>點計</h2><div class="note">RER = 70 × 體重^0.75 = ${Math.round(p.e.rer)} kcal；× ${p.e.f.toFixed(1)}（${p.e.label}）= ${Math.round(p.e.kcal)} kcal／日。零食、乾濕糧比例喺上面調。kcal/100g 要對包裝，我預設值係估算，唔確定。</div></div>`;
   h+=`<div class="card"><h2>食物提醒</h2><div class="note">• 成日唔好轉口味，揀 2–3 隻佢肯食嘅輪流<br>• 避免：朱古力、洋蔥、大蒜、葡萄／提子、夏威夷果、木糖醇、熟骨<br>• 轉糧要 7–10 日逐步轉</div></div>`;
   return h;
 }
@@ -220,6 +261,22 @@ function bind(){
     const s6=S.schedule.find(x=>x.id==='s6');if(s6&&(!s6.last||d>s6.last))s6.last=d;
     save();render()};
   document.querySelectorAll('[data-wdel]').forEach(b=>b.onclick=()=>{if(confirm('刪除呢條？')){S.weights=S.weights.filter(x=>x.d!==b.dataset.wdel);save();render()}});
+  const cb=document.getElementById('cbcs');
+  if(cb){
+    const p0=plan(),fill=()=>{const m=plan();
+      const t=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v};
+      t('sdt',Math.round(m.dryK/m.meals)+' kcal · '+Math.round(m.dryK/m.budget*100||0)+'%');t('sdg',Math.round(m.dryG/m.meals)+' g');
+      t('swt',Math.round(m.wetK/m.meals)+' kcal · '+Math.round(m.wetK/m.budget*100||0)+'%');t('swg',Math.round(m.wetG/m.meals)+' g');
+      const a=document.getElementById('sdr'),b=document.getElementById('swr');if(a)a.value=m.dryG/m.meals;if(b)b.value=m.wetG/m.meals;
+      t('cbt','每餐合共 '+Math.round((m.dryK+m.wetK+m.tr)/m.meals)+' kcal（含零食分攤 '+Math.round(m.tr/m.meals)+'），建議 '+Math.round(m.e.kcal/m.meals))};
+    cb.value=S.calc.bcs;cact.value=S.calc.act;
+    cb.onchange=()=>{S.calc.bcs=cb.value;save();render()};cact.onchange=()=>{S.calc.act=cact.value;save();render()};
+    ctr.onchange=()=>{S.calc.treats=Math.max(0,+ctr.value||0);save();render()};
+    const sd=document.getElementById('sdr'),sw=document.getElementById('swr');
+    if(sd&&sw){
+      sd.oninput=()=>{const m=plan();if(m.budget>0)S.calc.share=Math.min(1,sd.value*m.meals*m.dk/100/m.budget);save();fill()};
+      sw.oninput=()=>{const m=plan();if(m.budget>0)S.calc.share=1-Math.min(1,sw.value*m.meals*m.wk/100/m.budget);save();fill()};}
+    fill();}
   const ps=document.getElementById('psave');
   if(ps)ps.onclick=()=>{
     Object.assign(S.profile,{name:pn.value||'Power',birthday:pb.value,sex:ps_().value,neutered:pz.value==='1',adultKg:parseFloat(pa.value)||10,mealsPerDay:+pm.value});save();render()};
